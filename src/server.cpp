@@ -17,7 +17,7 @@ inline int mod_subtract(int a, int b, int modulus) {
 bool Server::init() {
     // create socket
     this->sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (this->sockfd < 0) {
+    if (this->sockfd <= 0) {
         std::cout << "ERROR Opening Socket" << std::endl;
         return false;
     }
@@ -46,15 +46,18 @@ bool Server::init() {
     return true;
 }
 
+
 bool Server::is_running() {
     return running;
 }
+
 
 Server::Server(int port_num, std::string ip) : portno(port_num), ip_address(ip), sockfd(-1), running(false) {
     if (!this->init()) {
         std::exit(EXIT_FAILURE);
     }
 }
+
 
 Server::~Server() {
     if (sockfd >= 0) {
@@ -63,6 +66,7 @@ Server::~Server() {
         }
     }
 }
+
 
 void Server::run() {
     struct sockaddr_in client_addr;
@@ -80,24 +84,29 @@ void Server::run() {
             continue;
         }
         handle_client(clientfd);
+        close(clientfd);
     }
 }
 
 
 void Server::handle_client(int clientfd) {
-    RequestParser parser;
-
+    RequestHandler request_handler;
+    auto request = request_handler.handle_fd(clientfd);
+    if (!request.has_value()) {
+        return;
+    }
+    // based on the path, get the route
+    // using the route mapped to function, execute the function if it exists
+    // call the function, should give a response obj, maybe put this in a try?
 }
 
 
-void RequestParser::update_state(int &buff_idx) {
-    bool new_state = false;
+void RequestHandler::update_state(int &buff_idx) {
     char c = buff[buff_idx];
     switch (state) {
         case ParserState::METHOD:
             // if current character is a ' ' METHOD -> PATH
             if (c == ' ') {
-                new_state = true;
                 state = ParserState::PATH;
                 buff_idx = (buff_idx + 1) % buff_size;
             }
@@ -105,7 +114,6 @@ void RequestParser::update_state(int &buff_idx) {
         case ParserState::PATH:
             // if current character is a ' ' PATH -> VERSION
             if (c == ' ') {
-                new_state = true;
                 state = ParserState::VERSION;
                 buff_idx = (buff_idx + 1) % buff_size;
             }
@@ -113,22 +121,29 @@ void RequestParser::update_state(int &buff_idx) {
         case ParserState::VERSION:
             // if current character is a '\r' VERSION -> LINE_END 
             if (c == '\r') {
-                new_state = true;
                 state = ParserState::HEADER_NAME;
                 buff_idx = (buff_idx + 2) % buff_size;
             }
             break;
         case ParserState::LINE_END:
-            // if the next bit is not '\n\r\n' LINE_END -> HEADER_NAME
-            // else we are done
-
-                new_state = true;
-            new_state = ParserState::HEADER_NAME;
+            // if current byte is '\r' the next bit is '\n\r\n' we are done, first ensure we have read the next 3
+            if (mod_subtract(write_idx, buff_idx, buff_size) >= 3 &&
+                    (c == '\r' &&
+                    buff[buff_idx+1] == '\n' &&
+                    buff[buff_idx+2] == '\r' &&
+                    buff[buff_idx+3] == '\n')) {
+                buff_idx = (buff_idx + 4) % buff_size;
+                // header done, handle body or finish
+                state = ParserState::BODY;
+            }
+            else {
+                state = ParserState::HEADER_NAME;
+            }
+            // else LINE_END -> HEADER_NAME
             break;
         case ParserState::HEADER_NAME:
             // if current character is a ' ' HEADER_NAME -> HEAD_VALUE
             if (c == ' ') {
-                new_state = true;
                 state = ParserState::HEADER_VALUE;
                 buff_idx = (buff_idx + 1) % buff_size;
             }
@@ -136,27 +151,29 @@ void RequestParser::update_state(int &buff_idx) {
         case ParserState::HEADER_VALUE:
             // if current character is a '\r' HEAD_VALUE -> LINE_END
             if (c == '\r') {
-                new_state = true;
                 state = ParserState::LINE_END;
                 buff_idx = (buff_idx + 2) % buff_size;
             }
             break;
+        default:
+            break;
     }
 }
 
-std::unique_ptr<Request> RequestParser::parse_fd(int clientfd) {
-    auto request = std::make_unique<Request>();
+
+std::optional<Request> RequestHandler::handle_fd(int clientfd) {
+    Request request;
     ssize_t bytes_read;
     size_t bytes_to_process;
     int buff_idx;
     while (1) {
         // if read_idx < write_idx then we only try to fill up buffer, otherwise, fill to read_idx
-        // note: read_idx is goiung to be larger than write_idx in this comparison
+        // note: the comparisons are all >= 0 due to the if read_idx < write_idx
         size_t read_amnt = read_idx < write_idx ? buff_size - write_idx : read_idx - write_idx;
         bytes_read = read(clientfd, &buff[write_idx], read_amnt);
         if (bytes_read < 0) {
             std::cout << "Error Reading Data" << std::endl;
-            return nullptr;
+            return std::nullopt;
         }
         else if (bytes_read == 0) {
             std::cout << "Connection Closed" << std::endl;
@@ -166,7 +183,7 @@ std::unique_ptr<Request> RequestParser::parse_fd(int clientfd) {
         write_idx = (write_idx + bytes_read) % buff_size;
         // amount to process is the amount of bytes between read and write index. w - r
         bytes_to_process = mod_subtract(write_idx, read_idx, buff_size);
-        for (int i=0; i < bytes_to_process; i++) {
+        for (int i=0; i < bytes_to_process && state != ParserState::BODY; i++) {
             buff_idx = (read_idx+i) % buff_size;
             update_state(buff_idx);
         }
@@ -174,3 +191,8 @@ std::unique_ptr<Request> RequestParser::parse_fd(int clientfd) {
     return request;
 }
 
+
+Request read_and_parse_fd(int client_fd) {
+    Request request;
+    return request;
+}

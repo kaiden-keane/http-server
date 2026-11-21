@@ -1,11 +1,12 @@
 #pragma once
 
-// #include <functional>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <memory> // unique ptr etc
+#include <optional>
+
 
 enum HTTPMethod {
     GET,
@@ -33,6 +34,7 @@ enum ParserState {
     LINE_END,
     HEADER_NAME,
     HEADER_VALUE,
+    BODY,
 };
 
 inline int mod_subtract(int a, int b, int modulus);
@@ -53,8 +55,7 @@ struct Response {
 };
 
 
-// using RouteHandler = std::function<Response(const Request&)>;
-class RequestParser {
+class RequestHandler {
     private:
         char buff[2048];
         const unsigned int buff_size = 2048;
@@ -64,10 +65,14 @@ class RequestParser {
         unsigned int line_start_idx;
         unsigned int read_idx;
         int write_idx;
-    std::unique_ptr<Request> parse_fd(int client_fd);
     public:
-    RequestParser();
+    RequestHandler();
+    std::optional<Request> handle_fd(int client_fd);
 };
+
+
+using RouteHandler = std::function<Response(const Request&)>;
+
 
 class Server {
     private:
