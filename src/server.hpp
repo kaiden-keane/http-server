@@ -7,6 +7,8 @@
 #include <netinet/in.h>
 #include <optional>
 
+#define REQUEST_BUFF_SIZE 2048
+
 
 enum HTTPMethod {
     GET,
@@ -57,16 +59,15 @@ struct Response {
 
 class RequestHandler {
     private:
-        char buff[2048];
-        const unsigned int buff_size = 2048;
+        char request_buff[REQUEST_BUFF_SIZE];
         ParserState state;
-        void update_state(int &buff_idx);
+        void update_state(const char buff[REQUEST_BUFF_SIZE], ssize_t read_amnt);
+        bool request_is_finished();
+        Request create_request();
         unsigned int state_start_idx;
         unsigned int line_start_idx;
-        unsigned int read_idx;
-        int write_idx;
     public:
-    RequestHandler();
+    // RequestHandler();
     std::optional<Request> handle_fd(int client_fd);
 };
 
