@@ -111,51 +111,63 @@ void RequestHandler::update_state(const char buff[REQUEST_BUFF_SIZE], ssize_t re
                 // if current character is a ' ' METHOD -> PATH
                 if (c == ' ') {
                     state = ParserState::PATH;
-                    buff_idx = buff_idx + 2;
+                } else {
+                    request.method.push_back(c);
                 }
                 break;
             case ParserState::PATH:
                 // if current character is a ' ' PATH -> VERSION
                 if (c == ' ') {
                     state = ParserState::VERSION;
-                    buff_idx = buff_idx + 2;
+                } else {
+                    request.path.push_back(c);
                 }
                 break;
             case ParserState::VERSION:
                 // if current character is a '\r' VERSION -> LINE_END 
                 if (c == '\r') {
                     state = ParserState::HEADER_NAME;
-                    buff_idx = buff_idx + 2;
+                    buff_idx += 1; // for the newline char
+                } else {
+                    request.http_version.push_back(c);
                 }
-                break;
-            case ParserState::LINE_END:
-                // if current byte is '\r' the next bit is '\n\r\n' we are done, first ensure we have read the next 3
-                if (read_amnt - buff_idx >= 3 &&
-                        (c == '\r' &&
-                        buff[buff_idx+1] == '\n' &&
-                        buff[buff_idx+2] == '\r' &&
-                        buff[buff_idx+3] == '\n')) {
-                    buff_idx = (buff_idx + 4);
-                    // header done, handle body or finish
-                    state = ParserState::BODY;
-                }
-                else {
-                    state = ParserState::HEADER_NAME;
-                }
-                // else LINE_END -> HEADER_NAME
                 break;
             case ParserState::HEADER_NAME:
                 // if current character is a ' ' HEADER_NAME -> HEAD_VALUE
-                if (c == ' ') {
+                if (c == ':') {
                     state = ParserState::HEADER_VALUE;
-                    buff_idx = buff_idx + 1;
+                    buff_idx += 1; // for the space char
+                } else {
+                    current_header_key.push_back(c);
                 }
                 break;
             case ParserState::HEADER_VALUE:
                 // if current character is a '\r' HEAD_VALUE -> LINE_END
                 if (c == '\r') {
                     state = ParserState::LINE_END;
-                    buff_idx = buff_idx + 2;
+                    buff_idx += 1; // for the newline char
+                } else {
+                    current_header_val.push_back(c);
+                }
+                break;
+            case ParserState::LINE_END: // when we get to here, we have already processed \r\n
+                request.headers.emplace(std::move(current_header_key), std::move(current_header_val));
+                current_header_key.clear();
+                current_header_key.clear();
+                // if current byte is '\r' the next few is '\n\r\n' we are done, first ensure we have read the next 3
+                // std::cout << "\n\n\t" << read_amnt - buff_idx << std::endl;
+                if (read_amnt - buff_idx >= 1 &&
+                        (c == '\r' && buff[buff_idx+1] == '\n')) {
+                    buff_idx += 1;
+                    // header done, handle body or finish
+                    state = ParserState::BODY;
+                    finished_request = true;
+                }
+                // else LINE_END -> HEADER_NAME
+                else {
+                    // we should process this character as part of current_header_key
+                    current_header_key.push_back(c);
+                    state = ParserState::HEADER_NAME;
                 }
                 break;
             default:
