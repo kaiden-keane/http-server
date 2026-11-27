@@ -10,32 +10,13 @@
 #define REQUEST_BUFF_SIZE 2048
 
 
-enum HTTPMethod {
-    GET,
-    POST,
-    PUT,
-    PATCH,
-    DELETE,
-    HEAD,
-    OPTIONS,
-    CONNECT,
-    TRACE,
-};
-
-// note: Nginx only uses 1.0 and 1.1 for backend communication
-// default is 1.0 so we can prob ignore parts of 1.1 for now
-enum HTTPVersion {
-    HTTP_1_0,
-    HTTP_1_1,
-};
-
 enum ParserState {
     METHOD,
     PATH,
     VERSION,
-    LINE_END,
     HEADER_NAME,
     HEADER_VALUE,
+    LINE_END,
     BODY,
 };
 
@@ -43,9 +24,9 @@ inline int mod_subtract(int a, int b, int modulus);
 
 struct Request {
     std::string body;
-    HTTPMethod method;
+    std::string method;
     std::string path;
-    HTTPVersion http_version;
+    std::string http_version;
     std::unordered_map<std::string, std::string> headers;
 };
 
@@ -59,13 +40,16 @@ struct Response {
 
 class RequestHandler {
     private:
+        Request request; // request that will be built by this
         char request_buff[REQUEST_BUFF_SIZE];
-        ParserState state;
-        void update_state(const char buff[REQUEST_BUFF_SIZE], ssize_t read_amnt);
-        bool request_is_finished();
-        Request create_request();
+        ParserState state{METHOD};
         unsigned int state_start_idx;
         unsigned int line_start_idx;
+        std::string current_header_key;
+        std::string current_header_val;
+        bool finished_request{false};
+        void update_state(const char buff[REQUEST_BUFF_SIZE], ssize_t read_amnt);
+        bool is_request_finished();
     public:
     // RequestHandler();
     std::optional<Request> handle_fd(int client_fd);
@@ -82,7 +66,7 @@ class Server {
     int portno;
     std::string ip_address;
     bool init();
-    bool running;
+    bool running{false};
     void handle_client(int clientfd);
     public:
     Server(int port_num, std::string ip = "0.0.0.0");
