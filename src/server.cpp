@@ -32,6 +32,13 @@ bool Server::init() {
         }
     }
 
+    // allow port re-use
+    int opt = 1;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
+        std::cout << "Error setting sockopt" << std::endl;
+        return false;
+    }
+
     // bind the socket
     int bind_res = bind(this->sockfd, (struct sockaddr*)&this->serv_addr, sizeof(this->serv_addr));
     if (bind_res < 0) {
