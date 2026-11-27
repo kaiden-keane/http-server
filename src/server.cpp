@@ -55,9 +55,12 @@ bool Server::is_running() {
 
 
 Server::Server(int port_num, std::string ip) : sockfd(-1), portno(port_num), ip_address(ip), running(false) {
+    std::cout << port_num << "\t" << ip << std::endl;
     if (!this->init()) {
+        std::cout << "error in init" << std::endl;
         std::exit(EXIT_FAILURE);
     }
+    std::cout << "init good" << std::endl;
 }
 
 
@@ -85,6 +88,7 @@ void Server::run() {
             std::cout << "Client Socket Error" << std::endl;
             continue;
         }
+        std::cout << "handling client " << clientfd << std::endl;
         handle_client(clientfd);
         close(clientfd);
     }
@@ -97,6 +101,7 @@ void Server::handle_client(int clientfd) {
     if (!request.has_value()) {
         return;
     }
+    std::cout << request->method << "\n" << request->path << "\n" << request->http_version << std::endl;
     // based on the path, get the route
     // using the route mapped to function, execute the function if it exists
     // call the function, should give a response obj, maybe put this in a try?
@@ -106,6 +111,7 @@ void Server::handle_client(int clientfd) {
 void RequestHandler::update_state(const char buff[REQUEST_BUFF_SIZE], ssize_t read_amnt) {
     for (unsigned int buff_idx=0; buff_idx < read_amnt && state != ParserState::BODY; buff_idx++) {
         char c = buff[buff_idx];
+        std::cout <<  "* " << buff_idx << "\t" << state << "\t" << c << std::endl;
         switch (state) {
             case ParserState::METHOD:
                 // if current character is a ' ' METHOD -> PATH
@@ -179,16 +185,19 @@ void RequestHandler::update_state(const char buff[REQUEST_BUFF_SIZE], ssize_t re
 
 
 std::optional<Request> RequestHandler::handle_fd(int clientfd) {
-    Request request;
+
     ssize_t bytes_read;
     while (1) {
+        std::cout << "reading" << std::endl;
         bytes_read = read(clientfd, request_buff, REQUEST_BUFF_SIZE);
+        std::cout << "read " << bytes_read << " bytes" << std::endl;
         if (bytes_read <= 0) {
             break;
         }
         update_state(request_buff, bytes_read);
-        if (request_is_finished()) {
-            return create_request();
+        std::cout << "ending state: " << state << std::endl;
+        if (is_request_finished()) {
+            return request;
         }
     }
     if (bytes_read < 0) {
@@ -202,16 +211,6 @@ std::optional<Request> RequestHandler::handle_fd(int clientfd) {
 }
 
 
-bool RequestHandler::request_is_finished() {
-    if (state == ParserState::BODY) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-
-Request RequestHandler::create_request() {
-    Request request;
-    return request;
+bool RequestHandler::is_request_finished() {
+    return finished_request;
 }
